@@ -2,7 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const Product = require('./models/Product'); // นำเข้าโมเดลจากไฟล์แยก
+const Product = require('./models/Product'); // นำเข้าโมเดลสินค้า
+const Order = require('./models/Order'); // นำเข้าโมเดลคำสั่งซื้อ
 const path = require('path');
 
 // สร้างแอป Express
@@ -74,6 +75,49 @@ app.delete('/products/:id', async (req, res) => {
     res.status(200).json({ message: 'Product deleted successfully' });
   } catch (error) {
     res.status(400).json({ error: 'Error deleting product' });
+  }
+});
+
+// API สำหรับสร้างคำสั่งซื้อใหม่
+app.post('/orders/create', async (req, res) => {
+  try {
+    const newOrder = req.body;  // ข้อมูลคำสั่งซื้อที่ถูกส่งมาจาก Frontend
+    const result = await Order.create(newOrder);  // บันทึกคำสั่งซื้อไปยัง MongoDB
+    res.status(201).json(result);  // ตอบกลับคำสั่งซื้อที่ถูกสร้าง
+  } catch (error) {
+    res.status(500).json({ error: 'Error creating order' });  // จัดการข้อผิดพลาด
+  }
+});
+
+// API สำหรับดึงคำสั่งซื้อทั้งหมด
+app.get('/orders', async (req, res) => {
+  try {
+    const orders = await Order.find();  // ดึงคำสั่งซื้อทั้งหมด
+    res.status(200).json(orders);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching orders' });
+  }
+});
+
+// API สำหรับอัปเดตสถานะคำสั่งซื้อ
+app.put('/orders/:id', async (req, res) => {
+  try {
+    const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedOrder) return res.status(404).json({ message: 'Order not found' });
+    res.status(200).json(updatedOrder);
+  } catch (error) {
+    res.status(400).json({ error: 'Error updating order' });
+  }
+});
+
+// API สำหรับลบคำสั่งซื้อ
+app.delete('/orders/:id', async (req, res) => {
+  try {
+    const deletedOrder = await Order.findByIdAndDelete(req.params.id);
+    if (!deletedOrder) return res.status(404).json({ message: 'Order not found' });
+    res.status(200).json({ message: 'Order deleted successfully' });
+  } catch (error) {
+    res.status(400).json({ error: 'Error deleting order' });
   }
 });
 
