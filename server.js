@@ -6,13 +6,14 @@ const Product = require('./models/Product'); // นำเข้าโมเด�
 const Order = require('./models/Order'); // นำเข้าโมเดลคำสั่งซื้อ
 const path = require('path');
 
-// สร้างแอป Express
 const app = express();
 
 // ตั้งค่า middleware
-app.use(cors()); // เปิดใช้งาน CORS เพื่ออนุญาตการเข้าถึงจากแหล่งอื่น ๆ
-app.use(bodyParser.json()); // รองรับ JSON requests
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(cors());
+app.use(bodyParser.json());
+
+// ให้บริการไฟล์ Angular static จากโฟลเดอร์ dist/test7
+app.use(express.static(path.join(__dirname, '../test-business/dist/test7')));
 
 // เชื่อมต่อ MongoDB
 mongoose.connect('mongodb+srv://puntuch66:Toey1234@cluster0.1zty8.mongodb.net/test', { 
@@ -119,6 +120,11 @@ app.delete('/orders/:id', async (req, res) => {
   } catch (error) {
     res.status(400).json({ error: 'Error deleting order' });
   }
+});
+
+// Fallback สำหรับ Angular routes ทั้งหมด ใช้ไฟล์ index.server.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../test-business/dist/test7/server/index.server.html'));
 });
 
 // เปิดใช้งานเซิร์ฟเวอร์ที่พอร์ต 3000
