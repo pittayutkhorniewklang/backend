@@ -12,8 +12,8 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// ให้บริการไฟล์ Angular static จากโฟลเดอร์ dist/test7
-app.use(express.static(path.join(__dirname, '../test-business/dist/test7')));
+// ให้บริการไฟล์ Angular static จากโฟลเดอร์ dist/test7/browser
+app.use(express.static(path.join(__dirname, 'dist/test7/browser')));
 
 // เชื่อมต่อ MongoDB
 mongoose.connect('mongodb+srv://puntuch66:Toey1234@cluster0.1zty8.mongodb.net/test', { 
@@ -22,6 +22,14 @@ mongoose.connect('mongodb+srv://puntuch66:Toey1234@cluster0.1zty8.mongodb.net/te
 })
 .then(() => console.log('เชื่อมต่อ MongoDB สำเร็จ'))
 .catch((err) => console.log('เชื่อมต่อ MongoDB ล้มเหลว', err));
+
+// ตรวจสอบสถานะการเชื่อมต่อ MongoDB
+app.get('/db-status', (req, res) => {
+  const dbState = mongoose.connection.readyState;
+  // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+  const statuses = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+  res.json({ status: statuses[dbState] });
+});
 
 // API สำหรับดึงสินค้าทั้งหมด
 app.get('/products', async (req, res) => {
@@ -44,9 +52,13 @@ app.get('/products/:id', async (req, res) => {
   }
 });
 
-// API สำหรับเพิ่มสินค้าใหม่
+// API สำหรับเพิ่มสินค้าใหม่ พร้อมการตรวจสอบข้อมูล
 app.post('/products', async (req, res) => {
-  console.log('Request body:', req.body);  // ตรวจสอบข้อมูลที่ส่งมาจาก Frontend
+  const { name, price, stock } = req.body;
+  if (!name || !price || !stock) {
+    return res.status(400).json({ error: 'Missing required fields: name, price, stock' });
+  }
+
   const newProduct = new Product(req.body);
   try {
     const savedProduct = await newProduct.save();
@@ -57,8 +69,13 @@ app.post('/products', async (req, res) => {
   }
 });
 
-// API สำหรับแก้ไขสินค้า
+// API สำหรับแก้ไขสินค้า พร้อมการตรวจสอบข้อมูล
 app.put('/products/:id', async (req, res) => {
+  const { name, price, stock } = req.body;
+  if (!name || !price || !stock) {
+    return res.status(400).json({ error: 'Missing required fields: name, price, stock' });
+  }
+
   try {
     const updatedProduct = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!updatedProduct) return res.status(404).json({ message: 'Product not found' });
@@ -68,32 +85,46 @@ app.put('/products/:id', async (req, res) => {
   }
 });
 
-// API สำหรับลบสินค้า
+// API สำหรับลบสินค้า พร้อมการจัดการข้อผิดพลาดเพิ่มเติม
 app.delete('/products/:id', async (req, res) => {
   try {
     const deletedProduct = await Product.findByIdAndDelete(req.params.id);
-    if (!deletedProduct) return res.status(404).json({ message: 'Product not found' });
+    if (!deletedProduct) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
     res.status(200).json({ message: 'Product deleted successfully' });
   } catch (error) {
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ error: 'Invalid Product ID' });
+    }
     res.status(400).json({ error: 'Error deleting product' });
   }
 });
 
-// API สำหรับสร้างคำสั่งซื้อใหม่
+// API สำหรับสร้างคำสั่งซื้อใหม่ พร้อมการตรวจสอบข้อมูล
 app.post('/orders/create', async (req, res) => {
+  const { customer_name, order_items } = req.body;
+  if (!customer_name || !order_items || order_items.length === 0) {
+    return res.status(400).json({ error: 'Missing required fields: customer_name, order_items' });
+  }
+
   try {
-    const newOrder = req.body;  // ข้อมูลคำสั่งซื้อที่ถูกส่งมาจาก Frontend
-    const result = await Order.create(newOrder);  // บันทึกคำสั่งซื้อไปยัง MongoDB
-    res.status(201).json(result);  // ตอบกลับคำสั่งซื้อที่ถูกสร้าง
+    const newOrder = req.body;
+    const result = await Order.create(newOrder);
+    res.status(201).json(result);
   } catch (error) {
-    res.status(500).json({ error: 'Error creating order' });  // จัดการข้อผิดพลาด
+    res.status(500).json({ error: 'Error creating order' });
   }
 });
 
 // API สำหรับดึงคำสั่งซื้อทั้งหมด
 app.get('/orders', async (req, res) => {
   try {
-    const orders = await Order.find();  // ดึงคำสั่งซื้อทั้งหมด
+    const orders = await Order.find().lean();
+    orders.forEach(order => {
+      order.id = order._id;  // กำหนดค่า id จาก _id ของ MongoDB
+      delete order._id;      // ลบฟิลด์ _id ถ้าไม่ต้องการใช้
+    });
     res.status(200).json(orders);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching orders' });
@@ -122,9 +153,14 @@ app.delete('/orders/:id', async (req, res) => {
   }
 });
 
-// Fallback สำหรับ Angular routes ทั้งหมด ใช้ไฟล์ index.server.html
+// จัดการกรณีไม่พบเส้นทาง (Route Not Found)
+app.use((req, res, next) => {
+  res.status(404).json({ error: 'Route Not Found' });
+});
+
+// Fallback สำหรับ Angular routes ทั้งหมด ใช้ไฟล์ index.html ในโฟลเดอร์ browser
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../test-business/dist/test7/server/index.server.html'));
+  res.sendFile(path.join(__dirname, '../dist/test7/browser/index.html'));
 });
 
 // เปิดใช้งานเซิร์ฟเวอร์ที่พอร์ต 3000

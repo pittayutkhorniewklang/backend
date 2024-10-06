@@ -5,8 +5,6 @@ const orderSchema = new mongoose.Schema({
     customer_name: String,
     order_items: Array,
     delivery_price: Number,
-    delivery_status: { type: String, default: 'pending' },
-    payment_status: { type: String, default: 'unpaid' },
     delivery_date: Date,
 });
 
