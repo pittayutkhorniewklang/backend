@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const multer = require('multer'); // นำเข้า multer สำหรับการอัปโหลดไฟล์
 const Product = require('./models/Product'); // นำเข้าโมเดลสินค้า
 const Order = require('./models/Order'); // นำเข้าโมเดลคำสั่งซื้อ
 const path = require('path');
@@ -26,10 +27,21 @@ mongoose.connect('mongodb+srv://puntuch66:Toey1234@cluster0.1zty8.mongodb.net/te
 // ตรวจสอบสถานะการเชื่อมต่อ MongoDB
 app.get('/db-status', (req, res) => {
   const dbState = mongoose.connection.readyState;
-  // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
   const statuses = ['disconnected', 'connected', 'connecting', 'disconnecting'];
   res.json({ status: statuses[dbState] });
 });
+
+// ตั้งค่า storage สำหรับ multer
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/'); // โฟลเดอร์สำหรับจัดเก็บไฟล์
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '-' + file.originalname); // ตั้งชื่อไฟล์
+  }
+});
+
+const upload = multer({ storage: storage });
 
 // API สำหรับดึงสินค้าทั้งหมด
 app.get('/products', async (req, res) => {
@@ -53,19 +65,29 @@ app.get('/products/:id', async (req, res) => {
 });
 
 // API สำหรับเพิ่มสินค้าใหม่ พร้อมการตรวจสอบข้อมูล
-app.post('/products', async (req, res) => {
-  const { name, price, stock } = req.body;
-  if (!name || !price || !stock) {
-    return res.status(400).json({ error: 'Missing required fields: name, price, stock' });
+app.post('/products', upload.single('image'), async (req, res) => {
+  const { name, category, brand, stock, price, description } = req.body;
+
+  // ตรวจสอบข้อมูล
+  if (!name || !category || !brand || !stock || !price || !description) {
+    return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  const newProduct = new Product(req.body);
+  const newProduct = new Product({
+    name,
+    category,
+    brand,
+    stock,
+    price,
+    description,
+    imageUrl: `http://localhost:3000/uploads/${req.file.filename}` // เก็บ URL ของภาพ
+  });
+
   try {
     const savedProduct = await newProduct.save();
     res.status(201).json(savedProduct);
   } catch (error) {
-    console.error('Error saving product:', error);
-    res.status(400).json({ error: 'Error saving product' });
+    res.status(500).json({ error: 'Error saving product' });
   }
 });
 
