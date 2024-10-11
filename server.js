@@ -2,42 +2,36 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const multer = require('multer'); // นำเข้า multer สำหรับการอัปโหลดไฟล์
-const Product = require('./models/Product'); // นำเข้าโมเดลสินค้า
-const Order = require('./models/Order'); // นำเข้าโมเดลคำสั่งซื้อ
+const multer = require('multer');
+const Product = require('./models/Product');
 const path = require('path');
-
+const Order = require('./models/Order'); //
 const app = express();
 
 // ตั้งค่า middleware
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:4200', // URL ของ Frontend
+  methods: 'GET,POST,PUT,DELETE',
+  allowedHeaders: 'Content-Type, Authorization'
+}));
 app.use(bodyParser.json());
-
-// ให้บริการไฟล์ Angular static จากโฟลเดอร์ dist/test7/browser
-app.use(express.static(path.join(__dirname, 'dist/test7/browser')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // ให้บริการไฟล์ static จากโฟลเดอร์ uploads
 
 // เชื่อมต่อ MongoDB
-mongoose.connect('mongodb+srv://puntuch66:Toey1234@cluster0.1zty8.mongodb.net/test', { 
-  useNewUrlParser: true, 
+mongoose.connect('mongodb+srv://puntuch66:Toey1234@cluster0.1zty8.mongodb.net/test', {
+  useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log('เชื่อมต่อ MongoDB สำเร็จ'))
-.catch((err) => console.log('เชื่อมต่อ MongoDB ล้มเหลว', err));
-
-// ตรวจสอบสถานะการเชื่อมต่อ MongoDB
-app.get('/db-status', (req, res) => {
-  const dbState = mongoose.connection.readyState;
-  const statuses = ['disconnected', 'connected', 'connecting', 'disconnecting'];
-  res.json({ status: statuses[dbState] });
-});
+  .then(() => console.log('เชื่อมต่อ MongoDB สำเร็จ'))
+  .catch((err) => console.log('เชื่อมต่อ MongoDB ล้มเหลว', err));
 
 // ตั้งค่า storage สำหรับ multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/'); // โฟลเดอร์สำหรับจัดเก็บไฟล์
+    cb(null, 'uploads/');
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname); // ตั้งชื่อไฟล์
+    cb(null, Date.now() + '-' + file.originalname);
   }
 });
 
@@ -46,7 +40,7 @@ const upload = multer({ storage: storage });
 // API สำหรับดึงสินค้าทั้งหมด
 app.get('/products', async (req, res) => {
   try {
-    const products = await Product.find();  // ดึงสินค้าทั้งหมด
+    const products = await Product.find();
     res.status(200).json(products);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching products' });
@@ -57,20 +51,29 @@ app.get('/products', async (req, res) => {
 app.get('/products/:id', async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-    if (!product) return res.status(404).json({ message: 'Product not found' });
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
     res.status(200).json(product);
   } catch (error) {
+    if (error.name === 'CastError') {
+      // จัดการกรณีที่ ID ไม่ถูกต้อง
+      return res.status(400).json({ error: 'Invalid Product ID' });
+    }
     res.status(500).json({ error: 'Error fetching product by ID' });
   }
 });
 
-// API สำหรับเพิ่มสินค้าใหม่ พร้อมการตรวจสอบข้อมูล
+// API สำหรับเพิ่มสินค้าใหม่
 app.post('/products', upload.single('image'), async (req, res) => {
   const { name, category, brand, stock, price, description } = req.body;
-
-  // ตรวจสอบข้อมูล
   if (!name || !category || !brand || !stock || !price || !description) {
     return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  let imageUrl = '';
+  if (req.file) {
+    imageUrl = `http://localhost:3000/uploads/${req.file.filename}`;
   }
 
   const newProduct = new Product({
@@ -80,7 +83,7 @@ app.post('/products', upload.single('image'), async (req, res) => {
     stock,
     price,
     description,
-    imageUrl: `http://localhost:3000/uploads/${req.file.filename}` // เก็บ URL ของภาพ
+    imageUrl
   });
 
   try {
@@ -91,23 +94,7 @@ app.post('/products', upload.single('image'), async (req, res) => {
   }
 });
 
-// API สำหรับแก้ไขสินค้า พร้อมการตรวจสอบข้อมูล
-app.put('/products/:id', async (req, res) => {
-  const { name, price, stock } = req.body;
-  if (!name || !price || !stock) {
-    return res.status(400).json({ error: 'Missing required fields: name, price, stock' });
-  }
-
-  try {
-    const updatedProduct = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updatedProduct) return res.status(404).json({ message: 'Product not found' });
-    res.status(200).json(updatedProduct);
-  } catch (error) {
-    res.status(400).json({ error: 'Error updating product' });
-  }
-});
-
-// API สำหรับลบสินค้า พร้อมการจัดการข้อผิดพลาดเพิ่มเติม
+// API สำหรับลบสินค้า
 app.delete('/products/:id', async (req, res) => {
   try {
     const deletedProduct = await Product.findByIdAndDelete(req.params.id);
@@ -116,13 +103,13 @@ app.delete('/products/:id', async (req, res) => {
     }
     res.status(200).json({ message: 'Product deleted successfully' });
   } catch (error) {
-    if (error.kind === 'ObjectId') {
+    if (error.name === 'CastError') {
+      // จัดการกรณีที่ ID ไม่ถูกต้อง
       return res.status(400).json({ error: 'Invalid Product ID' });
     }
-    res.status(400).json({ error: 'Error deleting product' });
+    res.status(500).json({ error: 'Error deleting product' });
   }
 });
-
 // API สำหรับสร้างคำสั่งซื้อใหม่ พร้อมการตรวจสอบข้อมูล
 app.post('/orders/create', async (req, res) => {
   const { customer_name, order_items } = req.body;
@@ -153,36 +140,32 @@ app.get('/orders', async (req, res) => {
   }
 });
 
-// API สำหรับอัปเดตสถานะคำสั่งซื้อ
-app.put('/orders/:id', async (req, res) => {
+app.get('/orders/sales/monthly/:month', async (req, res) => {
+  const month = req.params.month;
   try {
-    const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updatedOrder) return res.status(404).json({ message: 'Order not found' });
-    res.status(200).json(updatedOrder);
+      const sales = await Order.aggregate([
+          { $match: { createdAt: { $gte: new Date(`${month}-01`), $lt: new Date(`${month}-31`) } } },
+          { $group: { _id: null, totalSales: { $sum: '$amount' } } }
+      ]);
+      res.status(200).json(sales);
   } catch (error) {
-    res.status(400).json({ error: 'Error updating order' });
+      res.status(500).json({ error: 'Error fetching monthly sales' });
   }
 });
 
-// API สำหรับลบคำสั่งซื้อ
-app.delete('/orders/:id', async (req, res) => {
+// API สำหรับรายงานสินค้าขายดี
+app.get('/products/top-selling', async (req, res) => {
   try {
-    const deletedOrder = await Order.findByIdAndDelete(req.params.id);
-    if (!deletedOrder) return res.status(404).json({ message: 'Order not found' });
-    res.status(200).json({ message: 'Order deleted successfully' });
+      const topSelling = await Order.aggregate([
+          { $unwind: '$order_items' },
+          { $group: { _id: '$order_items.productId', quantitySold: { $sum: '$order_items.quantity' } } },
+          { $sort: { quantitySold: -1 } },
+          { $limit: 10 }
+      ]);
+      res.status(200).json(topSelling);
   } catch (error) {
-    res.status(400).json({ error: 'Error deleting order' });
+      res.status(500).json({ error: 'Error fetching top selling products' });
   }
-});
-
-// จัดการกรณีไม่พบเส้นทาง (Route Not Found)
-app.use((req, res, next) => {
-  res.status(404).json({ error: 'Route Not Found' });
-});
-
-// Fallback สำหรับ Angular routes ทั้งหมด ใช้ไฟล์ index.html ในโฟลเดอร์ browser
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/test7/browser/index.html'));
 });
 
 // เปิดใช้งานเซิร์ฟเวอร์ที่พอร์ต 3000

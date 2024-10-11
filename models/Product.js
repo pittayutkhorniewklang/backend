@@ -8,7 +8,7 @@ const productSchema = new mongoose.Schema({
   stock: Number,
   price: Number,
   description: String,
-  image: String  // URL รูปภาพถ้ามี
+  imageUrl: String  // URL รูปภาพถ้ามี
 });
 
 module.exports = mongoose.model('Product', productSchema);
