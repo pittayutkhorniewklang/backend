@@ -5,17 +5,17 @@ const cors = require('cors');
 const multer = require('multer');
 const Product = require('./models/Product');
 const path = require('path');
-const Order = require('./models/Order'); //
+const Order = require('./models/Order');
 const app = express();
 
 // ตั้งค่า middleware
 app.use(cors({
-  origin: 'http://localhost:4200', // URL ของ Frontend
+  origin: 'http://localhost:4200',
   methods: 'GET,POST,PUT,DELETE',
   allowedHeaders: 'Content-Type, Authorization'
 }));
 app.use(bodyParser.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // ให้บริการไฟล์ static จากโฟลเดอร์ uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // เชื่อมต่อ MongoDB
 mongoose.connect('mongodb+srv://puntuch66:Toey1234@cluster0.1zty8.mongodb.net/test', {
@@ -57,10 +57,25 @@ app.get('/products/:id', async (req, res) => {
     res.status(200).json(product);
   } catch (error) {
     if (error.name === 'CastError') {
-      // จัดการกรณีที่ ID ไม่ถูกต้อง
       return res.status(400).json({ error: 'Invalid Product ID' });
     }
     res.status(500).json({ error: 'Error fetching product by ID' });
+  }
+});
+
+app.delete('/products/:id', async (req, res) => {
+  console.log('Deleting Product ID:', req.params.id); // ดูค่า ID ที่รับเข้ามา
+  try {
+    const deletedProduct = await Product.findByIdAndDelete(req.params.id);
+    if (!deletedProduct) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    res.status(200).json({ message: 'Product deleted successfully' });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid Product ID' });
+    }
+    res.status(500).json({ error: 'Error deleting product' });
   }
 });
 
@@ -94,23 +109,55 @@ app.post('/products', upload.single('image'), async (req, res) => {
   }
 });
 
-// API สำหรับลบสินค้า
-app.delete('/products/:id', async (req, res) => {
+// API สำหรับอัปเดตสินค้า
+app.put('/products/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, category, brand, stock, price, description } = req.body;
+
+  if (!name || !category || !brand || !stock || !price || !description) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  console.log('Form Data:', req.body); // แสดงข้อมูล req.body แทน
+
   try {
-    const deletedProduct = await Product.findByIdAndDelete(req.params.id);
-    if (!deletedProduct) {
+    const updatedProduct = await Product.findByIdAndUpdate(id, {
+      name,
+      category,
+      brand,
+      stock,
+      price,
+      description
+    }, { new: true });
+
+    if (!updatedProduct) {
       return res.status(404).json({ message: 'Product not found' });
     }
-    res.status(200).json({ message: 'Product deleted successfully' });
+
+    res.status(200).json(updatedProduct);
   } catch (error) {
-    if (error.name === 'CastError') {
-      // จัดการกรณีที่ ID ไม่ถูกต้อง
-      return res.status(400).json({ error: 'Invalid Product ID' });
-    }
-    res.status(500).json({ error: 'Error deleting product' });
+    res.status(500).json({ error: 'Error updating product' });
   }
 });
-// API สำหรับสร้างคำสั่งซื้อใหม่ พร้อมการตรวจสอบข้อมูล
+
+// API สำหรับลบสินค้า
+app.delete('/orders/:id', async (req, res) => {
+  console.log('Deleting Order ID:', req.params.id); // เพิ่มบรรทัดนี้เพื่อดูค่า ID ที่ได้รับ
+  try {
+    const deletedOrder = await Order.findByIdAndDelete(req.params.id);
+    if (!deletedOrder) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    res.status(200).json({ message: 'Order deleted successfully' });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid Order ID' });
+    }
+    res.status(500).json({ error: 'Error deleting order' });
+  }
+});
+
+// API สำหรับสร้างคำสั่งซื้อใหม่
 app.post('/orders/create', async (req, res) => {
   const { customer_name, order_items } = req.body;
   if (!customer_name || !order_items || order_items.length === 0) {
@@ -131,40 +178,12 @@ app.get('/orders', async (req, res) => {
   try {
     const orders = await Order.find().lean();
     orders.forEach(order => {
-      order.id = order._id;  // กำหนดค่า id จาก _id ของ MongoDB
-      delete order._id;      // ลบฟิลด์ _id ถ้าไม่ต้องการใช้
+      order.id = order._id;
+      delete order._id;
     });
     res.status(200).json(orders);
   } catch (error) {
     res.status(500).json({ error: 'Error fetching orders' });
-  }
-});
-
-app.get('/orders/sales/monthly/:month', async (req, res) => {
-  const month = req.params.month;
-  try {
-      const sales = await Order.aggregate([
-          { $match: { createdAt: { $gte: new Date(`${month}-01`), $lt: new Date(`${month}-31`) } } },
-          { $group: { _id: null, totalSales: { $sum: '$amount' } } }
-      ]);
-      res.status(200).json(sales);
-  } catch (error) {
-      res.status(500).json({ error: 'Error fetching monthly sales' });
-  }
-});
-
-// API สำหรับรายงานสินค้าขายดี
-app.get('/products/top-selling', async (req, res) => {
-  try {
-      const topSelling = await Order.aggregate([
-          { $unwind: '$order_items' },
-          { $group: { _id: '$order_items.productId', quantitySold: { $sum: '$order_items.quantity' } } },
-          { $sort: { quantitySold: -1 } },
-          { $limit: 10 }
-      ]);
-      res.status(200).json(topSelling);
-  } catch (error) {
-      res.status(500).json({ error: 'Error fetching top selling products' });
   }
 });
 
