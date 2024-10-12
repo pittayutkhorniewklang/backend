@@ -7,10 +7,6 @@ const Product = require('./models/Product');
 const path = require('path');
 const Order = require('./models/Order');
 const app = express();
-const session = require('express-session');
-const MongoStore = require('connect-mongo');
-const User = require('./models/User');
-const bcrypt = require('bcrypt'); // ใช้สำหรับการเข้ารหัสรหัสผ่าน
 
 // ตั้งค่า middleware
 app.use(cors({
@@ -41,87 +37,6 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
-
-// ตั้งค่า express-session
-app.use(session({
-  secret: 'your_secret_key', // คีย์สำหรับเข้ารหัส session
-  resave: false,
-  saveUninitialized: true,
-  store: MongoStore.create({ mongoUrl: 'mongodb+srv://puntuch66:Toey1234@cluster0.1zty8.mongodb.net/test' }),
-  cookie: { secure: false }
-}));
-
-const isAuthenticated = (req, res, next) => {
-  if (req.session.user) {
-    next();
-  } else {
-    res.status(401).json({ error: 'Please log in first' });
-  }
-};
-
-// Middleware สำหรับตรวจสอบว่าเป็นแอดมิน
-const isAdmin = (req, res, next) => {
-  if (req.session.user && req.session.user.role === 'admin') {
-    next();
-  } else {
-    res.status(403).json({ error: 'Access denied. Admins only' });
-  }
-};
-
-// API การลงทะเบียน
-app.post('/register', async (req, res) => {
-  const { username, email, phone, address, province, district, postalCode, password, role } = req.body;
-
-  try {
-    const existingUser = await User.findOne({ username });
-    if (existingUser) {
-      return res.status(400).json({ error: 'Username is already taken' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      username,
-      email,
-      phone,
-      address,
-      province,
-      district,
-      postalCode,
-      password: hashedPassword,
-      role: role || 'user' // ถ้าไม่ได้ส่ง role มา จะตั้งค่าเป็น 'user' เริ่มต้น
-    });
-
-    await newUser.save();
-    res.status(201).json({ message: 'User registered successfully' });
-  } catch (error) {
-    res.status(500).json({ error: 'Registration failed' });
-  }
-});
-
-
-// API การล็อกอิน
-app.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-
-  try {
-    const user = await User.findOne({ username });
-    if (user && await bcrypt.compare(password, user.password)) {
-      req.session.user = { username: user.username, role: user.role };
-      res.json({ message: 'Login successful', role: user.role });
-    } else {
-      res.status(401).json({ error: 'Invalid credentials' });
-    }
-  } catch (error) {
-    res.status(500).json({ error: 'Login failed' });
-  }
-});
-
-// API สำหรับดึงสินค้าทั้งหมด (ผู้ใช้ทั่วไปสามารถเข้าถึงได้)
-
 // API สำหรับดึงสินค้าทั้งหมด
 app.get('/products', async (req, res) => {
   try {
@@ -148,7 +63,7 @@ app.get('/products/:id', async (req, res) => {
   }
 });
 
-app.delete('/products/:id',isAdmin, async (req, res) => {
+app.delete('/products/:id', async (req, res) => {
   console.log('Deleting Product ID:', req.params.id); // ดูค่า ID ที่รับเข้ามา
   try {
     const deletedProduct = await Product.findByIdAndDelete(req.params.id);
@@ -165,15 +80,20 @@ app.delete('/products/:id',isAdmin, async (req, res) => {
 });
 
 // API สำหรับเพิ่มสินค้าใหม่
-app.post('/products',isAdmin, upload.single('image'), async (req, res) => {
+app.post('/products', upload.single('image'), async (req, res) => {
   const { name, category, brand, stock, price, description } = req.body;
+
   if (!name || !category || !brand || !stock || !price || !description) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
+  // ตรวจสอบการอัปโหลดไฟล์
   let imageUrl = '';
   if (req.file) {
     imageUrl = `http://localhost:3000/uploads/${req.file.filename}`;
+    console.log('Uploaded Image URL:', imageUrl); // แสดง URL ของภาพที่อัปโหลด
+  } else {
+    console.log('No file uploaded'); // ตรวจสอบว่าไม่มีไฟล์ถูกอัปโหลด
   }
 
   const newProduct = new Product({
@@ -183,7 +103,7 @@ app.post('/products',isAdmin, upload.single('image'), async (req, res) => {
     stock,
     price,
     description,
-    imageUrl
+    imageUrl // บันทึก URL ของภาพ
   });
 
   try {
@@ -195,7 +115,8 @@ app.post('/products',isAdmin, upload.single('image'), async (req, res) => {
 });
 
 // API สำหรับอัปเดตสินค้า
-app.put('/products/:id', async (req, res) => {
+// API สำหรับอัปเดตสินค้า
+app.put('/products/:id', upload.single('image'), async (req, res) => {
   const { id } = req.params;
   const { name, category, brand, stock, price, description } = req.body;
 
@@ -203,7 +124,11 @@ app.put('/products/:id', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  console.log('Form Data:', req.body); // แสดงข้อมูล req.body แทน
+  // ตรวจสอบการอัปโหลดไฟล์
+  let imageUrl = '';
+  if (req.file) {
+    imageUrl = `http://localhost:3000/uploads/${req.file.filename}`;
+  }
 
   try {
     const updatedProduct = await Product.findByIdAndUpdate(id, {
@@ -212,7 +137,8 @@ app.put('/products/:id', async (req, res) => {
       brand,
       stock,
       price,
-      description
+      description,
+      imageUrl: imageUrl || req.body.imageUrl // ใช้ imageUrl ใหม่ถ้ามีการอัปโหลดไฟล์
     }, { new: true });
 
     if (!updatedProduct) {
