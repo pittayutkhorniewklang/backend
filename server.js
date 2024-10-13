@@ -170,33 +170,60 @@ app.delete('/orders/:id', async (req, res) => {
 
 // API สำหรับสร้างคำสั่งซื้อใหม่
 app.post('/orders/create', async (req, res) => {
-  const { customer_name, order_items } = req.body;
+  const { customer_name, order_items, delivery_price } = req.body;
+
   if (!customer_name || !order_items || order_items.length === 0) {
     return res.status(400).json({ error: 'Missing required fields: customer_name, order_items' });
   }
 
+  // คำนวณราคารวมของสินค้าที่สั่งซื้อ
+  let totalItemPrice = 0;
+  
+  order_items.forEach(item => {
+    totalItemPrice += item.price * item.quantity;
+  });
+
+  const newOrder = new Order({
+    customer_name,
+    order_items,
+    delivery_price,
+    total_item_price: totalItemPrice,
+    delivery_date: new Date()  // เพิ่มวันที่สั่งซื้อ
+  });
+
   try {
-    const newOrder = req.body;
-    const result = await Order.create(newOrder);
-    res.status(201).json(result);
+    const savedOrder = await newOrder.save();
+    res.status(201).json(savedOrder);
   } catch (error) {
     res.status(500).json({ error: 'Error creating order' });
   }
 });
 
+
+
 // API สำหรับดึงคำสั่งซื้อทั้งหมด
 app.get('/orders', async (req, res) => {
   try {
-    const orders = await Order.find().lean();
+    const orders = await Order.find()
+      .populate({
+        path: 'order_items.productId',  // ทำการ populate ข้อมูลสินค้าจาก productId
+        select: 'name price'  // เลือกเฉพาะฟิลด์ name และ price ของสินค้า
+      })
+      .lean();  // ใช้ lean() เพื่อแปลงข้อมูลเป็น JSON ที่จัดการได้ง่าย
+
     orders.forEach(order => {
-      order.id = order._id;
-      delete order._id;
+      order.id = order._id;  // กำหนด _id จาก MongoDB เป็น id เพื่อใช้ใน frontend
+      delete order._id;  // ลบ _id เพื่อหลีกเลี่ยงความซ้ำซ้อน
     });
-    res.status(200).json(orders);
+
+    res.status(200).json(orders);  // ส่งข้อมูลคำสั่งซื้อทั้งหมดกลับไปยัง frontend
   } catch (error) {
     res.status(500).json({ error: 'Error fetching orders' });
   }
 });
+
+
+
 
 // เปิดใช้งานเซิร์ฟเวอร์ที่พอร์ต 3000
 const PORT = process.env.PORT || 3000;
