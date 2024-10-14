@@ -3,9 +3,12 @@ const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const multer = require('multer');
-const Product = require('./models/Product');
+const bcrypt = require('bcrypt');
 const path = require('path');
-const Order = require('./models/Order');
+const User = require('./models/User'); // นำเข้าโมเดล User
+const Product = require('./models/Product'); // นำเข้าโมเดล Product
+const Order = require('./models/Order'); // นำเข้าโมเดล Order
+
 const app = express();
 
 // ตั้งค่า middleware
@@ -36,6 +39,75 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage: storage });
+
+// API สำหรับการสมัครสมาชิก
+app.post('/register', async (req, res) => {
+  const { username, email, phone, address, province, district, postalCode, password } = req.body;
+
+  // ตรวจสอบว่าข้อมูลครบถ้วน
+  if (!username || !email || !password || !phone || !address || !province || !district || !postalCode) {
+    return res.status(400).json({ message: 'All fields are required' });
+  }
+
+  try {
+    // ตรวจสอบว่ามีผู้ใช้ที่มีอีเมลนี้แล้วหรือไม่
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    // เข้ารหัสรหัสผ่านก่อนบันทึก
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // สร้างผู้ใช้ใหม่
+    const newUser = new User({
+      username,
+      email,
+      phone,
+      address,
+      province,
+      district,
+      postalCode,
+      password: hashedPassword,
+      role: 'user' // ค่าเริ่มต้นเป็น 'user'
+    });
+
+    // บันทึกผู้ใช้ลงฐานข้อมูล
+    await newUser.save();
+    res.status(201).json({ message: 'Registration successful' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error registering user', error });
+  }
+});
+
+// API สำหรับล็อกอิน
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ message: 'Username and password are required' });
+  }
+
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid username' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(400).json({ message: 'Invalid password' });
+    }
+
+    res.status(200).json({
+      message: 'Login successful',
+      username: user.username,
+      role: user.role
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error logging in', error });
+  }
+});
 
 // API สำหรับดึงสินค้าทั้งหมด
 app.get('/products', async (req, res) => {
