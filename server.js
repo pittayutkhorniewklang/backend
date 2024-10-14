@@ -135,7 +135,6 @@ app.get('/products/:id', async (req, res) => {
   }
 });
 
-// API สำหรับลบสินค้า
 app.delete('/products/:id', async (req, res) => {
   console.log('Deleting Product ID:', req.params.id); // ดูค่า ID ที่รับเข้ามา
   try {
@@ -186,6 +185,117 @@ app.post('/products', upload.single('image'), async (req, res) => {
     res.status(500).json({ error: 'Error saving product' });
   }
 });
+
+// API สำหรับอัปเดตสินค้า
+// API สำหรับอัปเดตสินค้า
+app.put('/products/:id', upload.single('image'), async (req, res) => {
+  const { id } = req.params;
+  const { name, category, brand, stock, price, description } = req.body;
+
+  if (!name || !category || !brand || !stock || !price || !description) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  // ตรวจสอบการอัปโหลดไฟล์
+  let imageUrl = '';
+  if (req.file) {
+    imageUrl = `http://localhost:3000/uploads/${req.file.filename}`;
+  }
+
+  try {
+    const updatedProduct = await Product.findByIdAndUpdate(id, {
+      name,
+      category,
+      brand,
+      stock,
+      price,
+      description,
+      imageUrl: imageUrl || req.body.imageUrl // ใช้ imageUrl ใหม่ถ้ามีการอัปโหลดไฟล์
+    }, { new: true });
+
+    if (!updatedProduct) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    res.status(200).json(updatedProduct);
+  } catch (error) {
+    res.status(500).json({ error: 'Error updating product' });
+  }
+});
+
+// API สำหรับลบสินค้า
+app.delete('/orders/:id', async (req, res) => {
+  console.log('Deleting Order ID:', req.params.id); // เพิ่มบรรทัดนี้เพื่อดูค่า ID ที่ได้รับ
+  try {
+    const deletedOrder = await Order.findByIdAndDelete(req.params.id);
+    if (!deletedOrder) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    res.status(200).json({ message: 'Order deleted successfully' });
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(400).json({ error: 'Invalid Order ID' });
+    }
+    res.status(500).json({ error: 'Error deleting order' });
+  }
+});
+
+// API สำหรับสร้างคำสั่งซื้อใหม่
+app.post('/orders/create', async (req, res) => {
+  const { customer_name, order_items, delivery_price } = req.body;
+
+  if (!customer_name || !order_items || order_items.length === 0) {
+    return res.status(400).json({ error: 'Missing required fields: customer_name, order_items' });
+  }
+
+  // คำนวณราคารวมของสินค้าที่สั่งซื้อ
+  let totalItemPrice = 0;
+  
+  order_items.forEach(item => {
+    totalItemPrice += item.price * item.quantity;
+  });
+
+  const newOrder = new Order({
+    customer_name,
+    order_items,
+    delivery_price,
+    total_item_price: totalItemPrice,
+    delivery_date: new Date()  // เพิ่มวันที่สั่งซื้อ
+  });
+
+  try {
+    const savedOrder = await newOrder.save();
+    res.status(201).json(savedOrder);
+  } catch (error) {
+    res.status(500).json({ error: 'Error creating order' });
+  }
+});
+
+
+
+// API สำหรับดึงคำสั่งซื้อทั้งหมด
+app.get('/orders', async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .populate({
+        path: 'order_items.productId',  // ทำการ populate ข้อมูลสินค้าจาก productId
+        select: 'name price'  // เลือกเฉพาะฟิลด์ name และ price ของสินค้า
+      })
+      .lean();  // ใช้ lean() เพื่อแปลงข้อมูลเป็น JSON ที่จัดการได้ง่าย
+
+    orders.forEach(order => {
+      order.id = order._id;  // กำหนด _id จาก MongoDB เป็น id เพื่อใช้ใน frontend
+      delete order._id;  // ลบ _id เพื่อหลีกเลี่ยงความซ้ำซ้อน
+    });
+
+    res.status(200).json(orders);  // ส่งข้อมูลคำสั่งซื้อทั้งหมดกลับไปยัง frontend
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching orders' });
+  }
+});
+
+
+
 
 // เปิดใช้งานเซิร์ฟเวอร์ที่พอร์ต 3000
 const PORT = process.env.PORT || 3000;
