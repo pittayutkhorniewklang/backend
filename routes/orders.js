@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
-const Product = require('../models/Product');
+
 
 router.post('/create', async (req, res) => {
   console.log(req.body);  // Log ข้อมูลที่รับมาเพื่อดูว่าถูกต้องหรือไม่
@@ -68,5 +68,8 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ message: 'Error deleting order', error });
   }
 });
+
+
+
 
 module.exports = router;
