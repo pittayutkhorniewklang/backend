@@ -1,8 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
+const Product = require('../models/Product');
 
 router.post('/create', async (req, res) => {
+  console.log(req.body);  // Log ข้อมูลที่รับมาเพื่อดูว่าถูกต้องหรือไม่
+
   const { customer_name, order_items, delivery_price } = req.body;
 
   if (!customer_name || !order_items || order_items.length === 0) {
@@ -26,35 +29,30 @@ router.post('/create', async (req, res) => {
     const savedOrder = await newOrder.save();
     res.status(201).json(savedOrder);
   } catch (error) {
+    console.error('Error creating order:', error);
     res.status(500).json({ error: 'Error creating order' });
   }
 });
 
+// API สำหรับดึงคำสั่งซื้อทั้งหมด
 router.get('/', async (req, res) => {
   try {
+    // ดึงข้อมูลคำสั่งซื้อทั้งหมดและ populate ข้อมูลสินค้าตาม productId
     const orders = await Order.find()
       .populate({
-        path: 'order_items.productId',
-        select: 'name price'
+        path: 'order_items.productId', // populate รายการสินค้าตาม productId
+        select: 'name price'  // ดึงเฉพาะ name และ price
       })
-      .lean();
-      
-    orders.forEach(order => {
-      order.id = order._id;
-      delete order._id;
+      .lean(); // lean เพื่อให้ได้ข้อมูลในรูปแบบ JSON ธรรมดา
 
-      order.order_items.forEach(item => {
-        if (!item.productId) {
-          item.productId = { name: 'No Product', price: 0 };
-        }
-      });
-    });
-
-    res.status(200).json(orders);
+    res.status(200).json(orders);  // ส่งข้อมูลกลับไปให้ frontend
   } catch (error) {
+    console.error('Error fetching orders:', error);
     res.status(500).json({ error: 'Error fetching orders' });
   }
 });
+
+
 
 router.delete('/:id', async (req, res) => {
   try {
