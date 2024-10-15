@@ -9,7 +9,7 @@ const productSchema = new mongoose.Schema({
   stock: Number,
   description: String,
   imageUrl: String,  // URL รูปภาพ
-  quantitySold: { type: Number, required: true },
-}); 
+  quantitySold: { type: Number, default: 0 }, // ตั้งค่าเริ่มต้นเป็น 0
+});
 
 module.exports = mongoose.model('Product', productSchema);

@@ -63,6 +63,7 @@ router.post('/', upload.single('image'), async (req, res) => {
     const savedProduct = await newProduct.save();
     res.status(201).json(savedProduct);
   } catch (error) {
+    console.error('Error saving product:', error);  // เพิ่มการแสดงข้อความ error ในฝั่งเซิร์ฟเวอร์
     res.status(500).json({ error: 'Error saving product' });
   }
 });
