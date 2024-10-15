@@ -10,6 +10,7 @@ const orderRoutes = require('./routes/orders');
 const productRoutes = require('./routes/products');
 const userRoutes = require('./routes/users');
 const dashboardRoutes = require('./routes/dashboard');
+const searchRoutes = require('./routes/search');
 const app = express();
 
 app.use(cors({
@@ -33,6 +34,7 @@ app.use('/orders', orderRoutes);
 app.use('/products', productRoutes);
 app.use('/users', userRoutes);
 app.use('/dashboard', dashboardRoutes);
+app.use('/search', searchRoutes); 
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
