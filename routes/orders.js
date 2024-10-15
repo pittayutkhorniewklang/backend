@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
-
+const Product = require('../models/Product');
 
 router.post('/create', async (req, res) => {
   console.log(req.body);  // Log ข้อมูลที่รับมาเพื่อดูว่าถูกต้องหรือไม่
@@ -27,6 +27,14 @@ router.post('/create', async (req, res) => {
 
   try {
     const savedOrder = await newOrder.save();
+
+      // อัปเดต quantitySold ของสินค้าที่ขายได้
+      order_items.forEach(async (item) => {
+        await Product.findByIdAndUpdate(item.productId, {
+          $inc: { quantitySold: item.quantity } // เพิ่มจำนวนที่ขายได้
+        });
+      });
+
     res.status(201).json(savedOrder);
   } catch (error) {
     console.error('Error creating order:', error);

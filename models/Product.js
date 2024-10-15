@@ -8,7 +8,8 @@ const productSchema = new mongoose.Schema({
   brand: String,
   stock: Number,
   description: String,
-  imageUrl: String  // URL รูปภาพ
-});
+  imageUrl: String,  // URL รูปภาพ
+  quantitySold: { type: Number, required: true },
+}); 
 
 module.exports = mongoose.model('Product', productSchema);
